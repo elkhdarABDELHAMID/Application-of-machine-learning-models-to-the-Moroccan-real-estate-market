@@ -1,0 +1,109 @@
+
+# Documentation du Projet
+
+## 1. Connexion à la base de données
+Ce projet utilise **SQLAlchemy** pour se connecter à une base de données PostgreSQL. La connexion est effectuée à l'aide des identifiants fournis dans un fichier de configuration. Une fois connecté, nous extrayons les données nécessaires pour l'analyse à partir des tables suivantes :
+- **Announcement** : Contient les informations sur les annonces (prix, nombre de chambres, surface, etc.).
+- **City** : Détails sur les villes, notamment les codes d'identification des villes.
+- **Equipment** : Liste des équipements disponibles dans chaque appartement.
+- **AnnotateEquipment** : Permet d'annoter les équipements pour chaque annonce.
+
+Les données sont ensuite extraites avec les requêtes SQL pertinentes et chargées dans des DataFrames pour un traitement ultérieur.
+
+**Exemple de connexion à la base de données :**
+```python
+from sqlalchemy import create_engine
+import pandas as pd
+
+# Connexion à la base de données PostgreSQL
+engine = create_engine('postgresql://username:password@localhost:5432/db_name')
+
+# Chargement des données
+df_announcements = pd.read_sql('SELECT * FROM Announcement;', engine)
+df_cities = pd.read_sql('SELECT * FROM City;', engine)
+```
+
+## 2. Pré-traitement des données
+Avant de passer à l'étape de modélisation, il est nécessaire de préparer les données. Cela inclut les étapes suivantes :
+
+### 2.1 Traitement des valeurs manquantes
+Les données peuvent contenir des valeurs manquantes (par exemple, dans la colonne "prix" ou "surface_area"). Nous avons deux approches principales pour gérer cela :
+- **Exclusion** : Supprimer les lignes contenant des valeurs manquantes si elles sont peu nombreuses.
+- **Imputation** : Remplacer les valeurs manquantes par des moyennes, médianes ou modes selon la distribution de la donnée.
+
+Par exemple, pour les annonces dont le prix est "PRIX NON SPÉCIFIÉ", nous avons décidé de les exclure ou de leur attribuer une valeur par défaut, en fonction des besoins du projet.
+
+### 2.2 Transformation des variables
+Certaines variables doivent être transformées avant d'être utilisées dans les modèles :
+- **Variable datetime** : La variable "date_ajout" peut être divisée en année, mois et jour pour mieux comprendre les tendances saisonnières.
+- **Variables catégorielles** : Les variables comme "city_id" et "equipment" sont converties en variables numériques à l'aide de l'encodage (par exemple, **OneHotEncoding** ou **LabelEncoding**).
+  
+### 2.3 Création de variables binaires
+Nous avons créé des variables binaires pour certains équipements, telles que :
+- **Presence ascenseur** : Si l'annonce contient un ascenseur, une colonne binaire est ajoutée avec 1 pour présence et 0 pour absence.
+- **Parking** : Idem pour la présence de places de parking.
+
+```python
+# Exemple d'encodage des variables catégorielles
+df['city_id_encoded'] = df['city_id'].astype('category').cat.codes
+```
+
+## 3. Modèles
+
+### 3.1 Régression Linéaire pour prédire les prix
+Le modèle de régression linéaire multiple est utilisé pour prédire le prix d'un bien immobilier en fonction de plusieurs variables indépendantes, telles que :
+- Nombre de chambres (`nb_rooms`)
+- Nombre de salles de bain (`nb_baths`)
+- Surface de l'appartement (`surface_area`)
+- Ville (`city_id`)
+- Équipements disponibles (`ascenseur`, `parking`, etc.)
+
+### 3.2 Classification pour la détection d'équipements
+Un modèle de classification est utilisé pour prédire la présence ou l'absence de certains équipements (par exemple, ascenseur, parking, etc.). L'objectif est de créer une variable binaire (1 ou 0) indiquant si l'équipement est présent dans l'annonce.
+
+### 3.3 Entraînement et évaluation des modèles
+Une fois les modèles développés, ils sont entraînés sur les données d'entraînement (80% des données) et testés sur les données de test (20%). Les performances des modèles sont évaluées à l'aide des métriques suivantes :
+- **Régression** : Erreur quadratique moyenne (MSE), Coefficient de détermination R2.
+- **Classification** : Précision, rappel, F1 score, courbe ROC et AUC.
+
+```python
+# Exemple d'entraînement d'un modèle de régression linéaire
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
+
+# Séparation des données
+X_train, X_test, y_train, y_test = train_test_split(df.drop('price', axis=1), df['price'], test_size=0.2, random_state=42)
+
+# Entraînement du modèle
+model = LinearRegression()
+model.fit(X_train, y_train)
+
+# Évaluation du modèle
+y_pred = model.predict(X_test)
+mse = mean_squared_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
+```
+
+## 4. Résultats
+Après avoir formé et évalué les modèles, nous avons analysé leurs performances en comparant les prix prédits avec les prix réels (pour la régression) et en évaluant les métriques de classification.
+
+### 4.1 Visualisation des résultats
+Nous avons utilisé des graphiques pour visualiser les résultats :
+- **Régression** : Comparaison entre les prix prédits et réels à l'aide de graphiques de dispersion.
+- **Classification** : Courbes ROC pour évaluer les modèles de classification.
+
+```python
+import matplotlib.pyplot as plt
+# Graphique de comparaison des prix réels et prédits
+plt.scatter(y_test, y_pred)
+plt.xlabel('Prix réel')
+plt.ylabel('Prix prédit')
+plt.title('Comparaison des prix réels et prédits')
+plt.show()
+```
+
+---
+
+### Conclusion
+Dans ce projet, nous avons mis en place des modèles de régression linéaire et de classification pour prédire les prix et détecter la présence d'équipements dans des annonces immobilières. Après un nettoyage et une préparation des données adéquats, les modèles ont montré des performances prometteuses, et plusieurs améliorations peuvent être envisagées, notamment l'ingénierie de nouvelles fonctionnalités et l'optimisation des hyperparamètres.
+
